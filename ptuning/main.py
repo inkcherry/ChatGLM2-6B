@@ -37,17 +37,35 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForSeq2Seq,
     HfArgumentParser,
-    Seq2SeqTrainingArguments,
+    # Seq2SeqTrainingArguments,
     set_seed,
 )
 from trainer_seq2seq import Seq2SeqTrainer
 
 from arguments import ModelArguments, DataTrainingArguments
+from transformers.training_args import TrainingArguments
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments,GaudiSeq2SeqTrainer,GaudiSeq2SeqTrainingArguments
+# Seq2SeqTrainingArguments=GaudiSeq2SeqTrainingArguments
+# Seq2SeqTrainer=GaudiSeq2SeqTrainer
+
+# TrainingArguments=GaudiTrainingArguments
+# AutoConfig=GaudiConfig
+
+
+from optimum.habana.utils import set_seed
+
+import habana_frameworks.torch.gpu_migration
+import habana_frameworks.torch.core as htcore
 
 logger = logging.getLogger(__name__)
+from typing import Optional, Dict
+from dataclasses import dataclass, field
+@dataclass
+class TrainingArguments(GaudiSeq2SeqTrainingArguments):
+    use_lora: bool = field(default=False)
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -121,6 +139,7 @@ def main():
         model.transformer.prefix_encoder.load_state_dict(new_prefix_state_dict)
     else:
         model = AutoModel.from_pretrained(model_args.model_name_or_path, config=config, trust_remote_code=True)
+        print(f"load {model.dtype}")
 
     if model_args.quantization_bit is not None:
         print(f"Quantized to {model_args.quantization_bit} bit")
@@ -128,10 +147,17 @@ def main():
     if model_args.pre_seq_len is not None:
         # P-tuning v2
         model = model.half()
+        # model = model.to(torch.bfloat16)
+
+        # print(f"{model.dtype}")
         model.transformer.prefix_encoder.float()
+     
     else:
         # Finetune
+        # model = model.half()
         model = model.float()
+        # print(f"{model.dtype}")
+
 
     prefix = data_args.source_prefix if data_args.source_prefix is not None else ""
 
@@ -275,6 +301,9 @@ def main():
         print_dataset_example(predict_dataset[0])
 
     # Data collator
+    print(f"xxxx{training_args.gaudi_config_name}")
+    gaudi_config = GaudiConfig.from_pretrained(training_args.gaudi_config_name)
+    
     label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
     data_collator = DataCollatorForSeq2Seq(
         tokenizer,
@@ -327,15 +356,40 @@ def main():
         data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
     )
     # Initialize our Trainer
+    # print(f" {model.dtype}")
+    if training_args.use_lora is not None and training_args.use_lora is not False :
+    
+        from peft import LoraConfig, get_peft_model,TaskType
+        LORA_R = 32
+        LORA_ALPHA = 16
+        LORA_DROPOUT = 0.05
+        TARGET_MODULES = [
+            # "dense",
+            "query_key_value",
+        ]
+        print("lora training-----------------")
+        config = LoraConfig(
+            r=LORA_R,
+            lora_alpha=LORA_ALPHA,
+            target_modules=TARGET_MODULES,
+            lora_dropout=LORA_DROPOUT,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+        # model = model.to(torch.bfloat16)
+        model = get_peft_model(model, config)
+        # print(model.dtype)
+        model.print_trainable_parameters()
     trainer = Seq2SeqTrainer(
         model=model,
+        gaudi_config=gaudi_config,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics if training_args.predict_with_generate else None,
-        save_changed=model_args.pre_seq_len is not None
+        # save_changed=model_args.pre_seq_len is not None
     )
 
     # Training

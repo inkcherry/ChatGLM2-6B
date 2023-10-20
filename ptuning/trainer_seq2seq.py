@@ -26,8 +26,8 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
-
 class Seq2SeqTrainer(PrefixTrainer):
+
     def evaluate(
         self,
         eval_dataset: Optional[Dataset] = None,

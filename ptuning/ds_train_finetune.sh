@@ -18,11 +18,14 @@ deepspeed --num_gpus=4 --master_port $MASTER_PORT main.py \
     --max_target_length 64 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 1 \
+    --gaudi_config_name Habana/gpt2 \
     --gradient_accumulation_steps 1 \
     --predict_with_generate \
     --max_steps 5000 \
     --logging_steps 10 \
     --save_steps 1000 \
     --learning_rate $LR \
-    --fp16
+    --use_habana \
+    --bf16 True\
+    --use_lazy_mode
 

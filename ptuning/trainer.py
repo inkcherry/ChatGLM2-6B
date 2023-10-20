@@ -17,11 +17,12 @@ The Trainer class, to easily train a 🤗 Transformers from scratch or finetune 
 """
 import os
 from typing import Optional
-from transformers import Trainer
+# from transformers import Trainer
 
 import torch
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.utils import logging
+from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments,GaudiSeq2SeqTrainer,GaudiSeq2SeqTrainingArguments
 
 logger = logging.get_logger(__name__)
 
@@ -29,7 +30,7 @@ WEIGHTS_NAME = "pytorch_model.bin"
 TRAINING_ARGS_NAME = "training_args.bin"
 
 
-class PrefixTrainer(Trainer):
+class PrefixTrainer(GaudiTrainer):
     def __init__(self, *args, save_changed=False, **kwargs):
         self.save_changed = save_changed
         super().__init__(*args, **kwargs)

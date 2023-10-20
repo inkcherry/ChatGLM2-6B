@@ -1,9 +1,8 @@
 PRE_SEQ_LEN=128
 LR=2e-2
 NUM_GPUS=1
-
-
 echo "!!!Before use this script, please change chatglm2-6b-local\config.json to torch_dtype to bfloat16."
+
 torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --do_train \
     --train_file AdvertiseGen/train.json \
@@ -11,7 +10,7 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --prompt_column content \
     --response_column summary \
     --overwrite_cache \
-    --model_name_or_path chatglm2-6b-local \  
+    --model_name_or_path chatglm2-6b-local \
     --output_dir output/adgen-chatglm2-6b-pt-$PRE_SEQ_LEN-$LR \
     --overwrite_output_dir \
     --max_source_length 20 \
@@ -29,6 +28,6 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --use_lazy_mode \
     --preprocessing_num_workers 10 \
     --bf16 True \
-
+    --use_lora
     #  --pre_seq_len $PRE_SEQ_LEN \
 
