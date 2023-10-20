@@ -45,7 +45,11 @@ from trainer_seq2seq import Seq2SeqTrainer
 from arguments import ModelArguments, DataTrainingArguments
 
 logger = logging.getLogger(__name__)
-
+from typing import Optional, Dict
+from dataclasses import dataclass, field
+@dataclass
+class Seq2SeqTrainingArguments(Seq2SeqTrainingArguments):
+    use_lora: bool = field(default=False)
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -132,6 +136,7 @@ def main():
     else:
         # Finetune
         model = model.float()
+    print(f"model type{model.dtype}")
 
     prefix = data_args.source_prefix if data_args.source_prefix is not None else ""
 
@@ -326,6 +331,28 @@ def main():
     training_args.generation_num_beams = (
         data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
     )
+    if training_args.use_lora is not None and training_args.use_lora is not False :
+        from peft import LoraConfig, get_peft_model,TaskType
+        LORA_R = 32
+        LORA_ALPHA = 16
+        LORA_DROPOUT = 0.05
+        TARGET_MODULES = [
+            # "dense",
+            "query_key_value",
+        ]
+        print("lora training-----------------")
+        config = LoraConfig(
+            r=LORA_R,
+            lora_alpha=LORA_ALPHA,
+            target_modules=TARGET_MODULES,
+            lora_dropout=LORA_DROPOUT,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+
+        model = get_peft_model(model, config)
+        model.print_trainable_parameters()
+    
     # Initialize our Trainer
     trainer = Seq2SeqTrainer(
         model=model,

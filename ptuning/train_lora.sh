@@ -1,7 +1,10 @@
+export CUDA_VISIBLE_DEVICES=0
+
 PRE_SEQ_LEN=128
 LR=2e-2
 NUM_GPUS=1
-
+# use python main.py  or  ddp_find_unused_parameters for https://github.com/tloen/alpaca-lora/issues/301
+# python main.py \
 torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --do_train \
     --train_file AdvertiseGen/train.json \
@@ -13,16 +16,19 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --model_name_or_path chatglm2-6b-local \
     --output_dir output/adgen-chatglm2-6b-pt-$PRE_SEQ_LEN-$LR \
     --overwrite_output_dir \
-    --max_source_length 64 \
-    --max_target_length 128 \
+    --max_source_length 20 \
+    --max_target_length 512 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
-    --predict_with_generate \
-    --max_steps 3000 \
+    --max_steps 500 \
     --logging_steps 10 \
     --save_steps 1000 \
     --learning_rate $LR \
+    --use_lora \
+    --predict_with_generate \
+    --ddp_find_unused_parameters=False \
+    --fp16 True
     # --quantization_bit 4
     # --pre_seq_len $PRE_SEQ_LEN \
 
