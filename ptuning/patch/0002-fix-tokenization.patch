@@ -1,0 +1,40 @@
+From 2ea8a479c510af9598da507c41c88285222cdcd8 Mon Sep 17 00:00:00 2001
+From: inkcherry <mingzhi.liu@intel.com>
+Date: Mon, 23 Oct 2023 02:39:06 +0000
+Subject: [PATCH 2/2] fix tokenization
+
+---
+ tokenization_chatglm.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 tokenization_chatglm.py
+
+diff --git a/tokenization_chatglm.py b/tokenization_chatglm.py
+old mode 100644
+new mode 100755
+index d4ce416..3ce9879
+--- a/tokenization_chatglm.py
++++ b/tokenization_chatglm.py
+@@ -66,17 +66,19 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
+     model_input_names = ["input_ids", "attention_mask", "position_ids"]
+ 
+     def __init__(self, vocab_file, padding_side="left", clean_up_tokenization_spaces=False, **kwargs):
+-        super().__init__(padding_side=padding_side, clean_up_tokenization_spaces=clean_up_tokenization_spaces, **kwargs)
+         self.name = "GLMTokenizer"
+ 
+         self.vocab_file = vocab_file
+         self.tokenizer = SPTokenizer(vocab_file)
++        super().__init__(padding_side=padding_side, clean_up_tokenization_spaces=clean_up_tokenization_spaces, **kwargs)
++
+         self.special_tokens = {
+             "<bos>": self.tokenizer.bos_id,
+             "<eos>": self.tokenizer.eos_id,
+             "<pad>": self.tokenizer.pad_id
+         }
+ 
++
+     def get_command(self, token):
+         if token in self.special_tokens:
+             return self.special_tokens[token]
+-- 
+2.25.1
+

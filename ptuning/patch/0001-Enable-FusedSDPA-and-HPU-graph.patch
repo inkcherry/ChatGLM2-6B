@@ -1,0 +1,64 @@
+From 8c67d060044743df4714ee4eebcda1b28f5ca204 Mon Sep 17 00:00:00 2001
+From: Kurt Chen <kurt.chen@intel.com>
+Date: Thu, 14 Sep 2023 01:22:10 +0000
+Subject: [PATCH 1/2] Enable FusedSDPA and HPU graph
+
+---
+ modeling_chatglm.py | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/modeling_chatglm.py b/modeling_chatglm.py
+index 230f4c3..b929e2b 100644
+--- a/modeling_chatglm.py
++++ b/modeling_chatglm.py
+@@ -25,6 +25,13 @@ from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaL
+ 
+ from .configuration_chatglm import ChatGLMConfig
+ 
++_USE_FUSED_SDPA = False
++try:
++    from habana_frameworks.torch.hpex.kernels import FusedSDPA
++    _USE_FUSED_SDPA = True
++except ImportError:
++    _USE_FUSED_SDPA = False
++
+ # flags required to enable jit fusion kernels
+ 
+ if sys.platform != 'darwin':
+@@ -221,12 +228,18 @@ class CoreAttention(torch.nn.Module):
+         if pytorch_major_version >= 2:
+             query_layer, key_layer, value_layer = [k.permute(1, 2, 0, 3) for k in [query_layer, key_layer, value_layer]]
+             if attention_mask is None and query_layer.shape[2] == key_layer.shape[2]:
+-                context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
++                if _USE_FUSED_SDPA is True:
++                    context_layer = FusedSDPA.apply(query_layer, key_layer, value_layer, None, 0.0, True)
++                else:
++                    context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
+                                                                                  is_causal=True)
+             else:
+                 if attention_mask is not None:
+                     attention_mask = ~attention_mask
+-                context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
++                if _USE_FUSED_SDPA is True:
++                    context_layer = FusedSDPA.apply(query_layer, key_layer, value_layer, attention_mask, 0.0, False)
++                else:
++                    context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
+                                                                                  attention_mask)
+             context_layer = context_layer.permute(2, 0, 1, 3)
+             new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size_per_partition,)
+@@ -813,7 +826,11 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
+                                             attention_mask], dim=-1)
+ 
+         if full_attention_mask is None:
+-            if (attention_mask is not None and not attention_mask.all()) or (past_key_values and seq_length != 1):
++            attention_mask_not_all = False
++            if attention_mask is not None:
++                attention_mask_bool = attention_mask.to(torch.bool)
++                attention_mask_not_all = attention_mask_bool.all() != True
++            if attention_mask_not_all is True or (past_key_values and seq_length != 1):
+                 full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
+ 
+         # Rotary positional embeddings
+-- 
+2.25.1
+

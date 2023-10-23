@@ -15,19 +15,21 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --overwrite_output_dir \
     --max_source_length 20 \
     --max_target_length 512 \
-    --gaudi_config_name Habana/gpt2 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 16 \
     --predict_with_generate \
     --max_steps 3000 \
-    --logging_steps 10 \
+    --logging_steps 100 \
     --save_steps 1000 \
     --learning_rate $LR \
     --use_habana \
     --use_lazy_mode \
     --preprocessing_num_workers 10 \
     --bf16 True \
-    --use_lora
+    --use_lora \
+    --ddp_find_unused_parameters=False \
+    --gaudi_config_name gaudi_config.json \
+
     #  --pre_seq_len $PRE_SEQ_LEN \
 
