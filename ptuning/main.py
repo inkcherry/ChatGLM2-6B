@@ -364,8 +364,8 @@ def main():
         LORA_ALPHA = 16
         LORA_DROPOUT = 0.05
         TARGET_MODULES = [
-            # "dense",
-            "query_key_value",
+            "dense",
+            # "query_key_value",
         ]
         print("lora training-----------------")
         config = LoraConfig(
