@@ -10,7 +10,7 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --prompt_column content \
     --response_column summary \
     --overwrite_cache \
-    --model_name_or_path chatglm2-6b-local \
+    --model_name_or_path chatglm2-6b-local\
     --output_dir output/adgen-chatglm2-6b-pt-$PRE_SEQ_LEN-$LR \
     --overwrite_output_dir \
     --max_source_length 20 \
@@ -28,6 +28,7 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --preprocessing_num_workers 10 \
     --bf16 True \
     --use_lora \
+    --lora_rank 64 \
     --ddp_find_unused_parameters=False \
     --gaudi_config_name gaudi_config.json \
 
