@@ -41,15 +41,16 @@ from transformers import (
     set_seed,
 )
 from trainer_seq2seq import Seq2SeqTrainer
-
 from arguments import ModelArguments, DataTrainingArguments
 
 logger = logging.getLogger(__name__)
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from dataclasses import dataclass, field
 @dataclass
 class Seq2SeqTrainingArguments(Seq2SeqTrainingArguments):
     use_lora: bool = field(default=False)
+    lora_rank:int =field(default=64)
+    lora_module_name : List[str] = field(default_factory=list)
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -333,18 +334,15 @@ def main():
     )
     if training_args.use_lora is not None and training_args.use_lora is not False :
         from peft import LoraConfig, get_peft_model,TaskType
-        LORA_R = 32
         LORA_ALPHA = 16
         LORA_DROPOUT = 0.05
-        TARGET_MODULES = [
-            # "dense",
-            "query_key_value",
-        ]
-        print("lora training-----------------")
+        print(training_args.lora_module_name)
+        print(f"lora training lora_rank:{training_args.lora_rank}-------------------------")
+        print(f"lora trainin lora_module_name:{training_args.lora_module_name}------------")
         config = LoraConfig(
-            r=LORA_R,
+            r=training_args.lora_rank,
             lora_alpha=LORA_ALPHA,
-            target_modules=TARGET_MODULES,
+            target_modules=training_args.lora_module_name,
             lora_dropout=LORA_DROPOUT,
             bias="none",
             task_type=TaskType.CAUSAL_LM,

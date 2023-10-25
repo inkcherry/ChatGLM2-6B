@@ -26,9 +26,11 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --save_steps 1000 \
     --learning_rate $LR \
     --use_lora \
+    --lora_rank 64 \
+    --lora_module 'dense' 'query_key_value' \
     --predict_with_generate \
     --ddp_find_unused_parameters=False \
-    --fp16 True
+    --fp16 True \
     # --quantization_bit 4
     # --pre_seq_len $PRE_SEQ_LEN \
 
