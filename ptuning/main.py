@@ -56,14 +56,16 @@ from optimum.habana.utils import set_seed
 
 import habana_frameworks.torch.gpu_migration
 import habana_frameworks.torch.core as htcore
-
 logger = logging.getLogger(__name__)
 from typing import Optional, Dict
 from dataclasses import dataclass, field
+from typing import List, Optional
+
 @dataclass
 class TrainingArguments(GaudiSeq2SeqTrainingArguments):
     use_lora: bool = field(default=False)
     lora_rank:int =field(default=64)
+    lora_module_name : List[str] = field(default_factory=list)
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
@@ -364,15 +366,14 @@ def main():
         
         LORA_ALPHA = 16
         LORA_DROPOUT = 0.05
-        TARGET_MODULES = [
-            "dense",
-            # "query_key_value",
-        ]
-        print(f"lora training----Lora_rank:{training_args.lora_rank}------------")
+        print(training_args.lora_module_name)
+        print(f"lora training lora_rank:{training_args.lora_rank}-------------------------")
+        print(f"lora trainin lora_module_name:{training_args.lora_module_name}------------")
+
         config = LoraConfig(
             r=training_args.lora_rank ,
             lora_alpha=LORA_ALPHA,
-            target_modules=TARGET_MODULES,
+            target_modules=training_args.lora_module_name,
             lora_dropout=LORA_DROPOUT,
             bias="none",
             task_type=TaskType.CAUSAL_LM,

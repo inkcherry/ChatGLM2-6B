@@ -3,7 +3,8 @@ LR=2e-2
 NUM_GPUS=1
 echo "!!!Before use this script, please change chatglm2-6b-local\config.json to torch_dtype to bfloat16."
 
-torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
+# torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
+python main.py \
     --do_train \
     --train_file AdvertiseGen/train.json \
     --validation_file AdvertiseGen/dev.json \
@@ -26,11 +27,16 @@ torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
     --use_habana \
     --use_lazy_mode \
     --preprocessing_num_workers 10 \
-    --bf16 True \
     --use_lora \
     --lora_rank 64 \
+    --lora_module 'dense' 'query_key_value' \
     --ddp_find_unused_parameters=False \
     --gaudi_config_name gaudi_config.json \
-
+    --bf16 True \
+    --use_hpu_graphs=False \
+    --use_hpu_graphs_for_inference=False \
+    --use_hpu_graphs_for_training=False \
+    #--lora_module 'dense' 'query_key_value' \
+    # --use_hpu_graphs 
     #  --pre_seq_len $PRE_SEQ_LEN \
 
