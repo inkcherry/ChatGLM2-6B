@@ -1,12 +1,11 @@
 PRE_SEQ_LEN=128
 LR=2e-2
-# NUM_GPUS=1
+NUM_GPUS=1
 echo "!!!Before use this script, please change chatglm2-6b-local\config.json to torch_dtype to bfloat16."
 # python main.py \
 # python gaudi_spawn.py --world_size 1  main.py \
-
 # torchrun --standalone --nnodes=1 --nproc-per-node=$NUM_GPUS main.py \
-python gaudi_spawn.py --world_size 2 --use_deepspeed  main.py\
+python gaudi_spawn.py --world_size $NUM_GPUS --use_deepspeed  main.py\
     --do_train \
     --train_file AdvertiseGen/train.json \
     --validation_file AdvertiseGen/dev.json \
@@ -37,8 +36,7 @@ python gaudi_spawn.py --world_size 2 --use_deepspeed  main.py\
     --lora_rank 64 \
     --lora_module 'query_key_value' \
     --gradient_checkpoint True\
-        # --predict_with_generate \
-
+    # --predict_with_generate \
     #--lora_module 'dense' 'query_key_value' \
     # --use_hpu_graphs 
     #  --pre_seq_len $PRE_SEQ_LEN \
