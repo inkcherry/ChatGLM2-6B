@@ -25,7 +25,7 @@ from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaL
 
 from .configuration_chatglm import ChatGLMConfig
 import habana_frameworks.torch.core as htcore
-
+rope_use_hpu_opt = True 
 _USE_FUSED_SDPA = False
 try:
     from habana_frameworks.torch.hpex.kernels import FusedSDPA
@@ -133,7 +133,7 @@ class RotaryEmbedding(nn.Module):
         self.original_impl = original_impl
 
     def forward_impl(
-            self, seq_len: int, n_elem: int, dtype: torch.dtype, device: torch.device, base: int = 10000
+            self, seq_len: int, n_elem: int, dtype: torch.dtype, device: torch.device, base: int = 10000, hpu_opt: bool = True
     ):
         """Enhanced Transformer with Rotary Position Embedding.
 
@@ -150,6 +150,10 @@ class RotaryEmbedding(nn.Module):
         # Calculate the product of position index and $\theta_i$
         idx_theta = torch.outer(seq_idx, theta).float()
 
+        
+            # for optimized implementation of RoPe for Habana
+        if hpu_opt:
+            idx_theta = idx_theta.repeat_interleave(2, dim=-1)
         cache = torch.stack([torch.cos(idx_theta), torch.sin(idx_theta)], dim=-1)
 
         # this is to mimic the behaviour of complex32, else we will get different results
@@ -157,9 +161,9 @@ class RotaryEmbedding(nn.Module):
             cache = cache.bfloat16() if dtype == torch.bfloat16 else cache.half()
         return cache
 
-    def forward(self, max_seq_len, offset=0):
+    def forward(self, max_seq_len, offset=0, hpu_opt=True):
         return self.forward_impl(
-            max_seq_len, self.dim, dtype=self.inv_freq.dtype, device=self.inv_freq.device
+            max_seq_len, self.dim, dtype=self.inv_freq.dtype, device=self.inv_freq.device, hpu_opt=hpu_opt
         )
 
 
@@ -183,7 +187,15 @@ def apply_rotary_pos_emb(x: torch.Tensor, rope_cache: torch.Tensor) -> torch.Ten
     # x_out2: [1024, 1, 32, 32, 2]
     x_out2 = x_out2.flatten(3) # [1024, 1, 32, 64]
     return torch.cat((x_out2, x_pass), dim=-1) # [1024,1,32,128]
-
+def apply_rotary_pos_emb_hpu_opt(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor,
+                          mask_even: torch.Tensor, mask_odd: torch.Tensor,
+                          rope_mask_even: torch.Tensor, rope_mask_odd: torch.Tensor) -> torch.Tensor:
+    def rotate_half(x):
+        return ((x @ mask_even) * rope_mask_even) + ((x @ mask_odd) * rope_mask_odd)
+    rot_dim = cos.shape[-1]
+    x, x_pass = x[..., :rot_dim], x[..., rot_dim:] # [T, B, M, H/M/2]
+    x_out2 = (x * cos) + (rotate_half(x) * sin)
+    return torch.cat((x_out2, x_pass), dim=-1)
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, normalized_shape, eps=1e-5, device=None, dtype=None, **kwargs):
@@ -358,6 +370,13 @@ class SelfAttention(torch.nn.Module):
         self.dense = nn.Linear(self.projection_size, config.hidden_size, bias=config.add_bias_linear,
                                device=device, **_config_to_kwargs(config)
                                )
+        mask_size = self.hidden_size_per_attention_head // 4
+        self.mask_even = torch.tensor([[[1, 1], [0, 0]]], dtype=torch.bfloat16, device='hpu').repeat(mask_size, 1, 1)
+        self.mask_odd = torch.tensor([[[0, 0], [1, 1]]], dtype=torch.bfloat16, device='hpu').repeat(mask_size, 1, 1)
+        self.mask_even, self.mask_odd = torch.block_diag(*self.mask_even).contiguous(), torch.block_diag(*self.mask_odd).contiguous()
+        self.rope_mask_even = torch.tensor([0, 1], device='hpu', dtype=torch.bfloat16).repeat(1, mask_size).contiguous()
+        self.rope_mask_odd = torch.tensor([-1, 0], device='hpu', dtype=torch.bfloat16).repeat(1, mask_size).contiguous()
+
 
     def _allocate_memory(self, inference_max_sequence_len, batch_size, device=None, dtype=None):
         if self.multi_query_attention:
@@ -419,8 +438,15 @@ class SelfAttention(torch.nn.Module):
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
             # htcore.mark_step()
-            query_layer = apply_rotary_pos_emb(query_layer, rotary_pos_emb)
-            key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
+            if not rope_use_hpu_opt:
+                query_layer = apply_rotary_pos_emb(query_layer, rotary_pos_emb)
+                key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
+            else: 
+                cos = rotary_pos_emb[:, :, :, 0].unsqueeze(-2).contiguous()
+                sin = rotary_pos_emb[:, :, :, 1].unsqueeze(-2).contiguous()
+                query_layer = apply_rotary_pos_emb_hpu_opt(query_layer, cos, sin, self.mask_even, self.mask_odd, self.rope_mask_even, self.rope_mask_odd)
+                key_layer = apply_rotary_pos_emb_hpu_opt(key_layer, cos, sin, self.mask_even, self.mask_odd, self.rope_mask_even, self.rope_mask_odd)
+ 
             # htcore.mark_step()
 
             # htcore.mark_step()
@@ -442,7 +468,7 @@ class SelfAttention(torch.nn.Module):
             key_layer = key_layer.expand(
                 -1, -1, -1, self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition, -1
             )
-            htcore.mark_step()
+            htcore.mark_step() 
             key_layer = key_layer.contiguous().view(
                 key_layer.size()[:2] + (self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
             )
@@ -845,7 +871,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             if attention_mask is not None:
                 attention_mask = torch.cat([attention_mask.new_ones((batch_size, self.pre_seq_len)),
                                             attention_mask], dim=-1)
-
+        
+        attention_mask_bool = attention_mask.bool()
         if full_attention_mask is None:
             attention_mask_not_all = False
             if attention_mask is not None:
@@ -855,7 +882,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
 
         # Rotary positional embeddings
-        rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
+        rotary_pos_emb = self.rotary_pos_emb(self.seq_length, hpu_opt=rope_use_hpu_opt)
         if position_ids is not None:
             rotary_pos_emb = rotary_pos_emb[position_ids]
         else:
